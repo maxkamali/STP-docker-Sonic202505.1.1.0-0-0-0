@@ -1,0 +1,11 @@
+This project patches public sonic-net/sonic-stp source at commit
+0a74023f3a1bac67e61e2568687aaba78d4a78fc.
+
+Upstream SONiC STP code is licensed under Apache License 2.0. Existing upstream
+copyright/license notices continue to apply to that code and its patches and
+must be preserved when distributing modified source. See UPSTREAM-LICENSE and
+https://www.apache.org/licenses/LICENSE-2.0.
+
+The repository's MIT LICENSE covers original documentation, scripts and tests.
+It does not relicense upstream source or patch context. No private runtime image
+or third-party binary is included.

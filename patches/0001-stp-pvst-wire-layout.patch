@@ -1,0 +1,284 @@
+diff --git a/include/l2.h b/include/l2.h
+index e0533c4..e2c032b 100755
+--- a/include/l2.h
++++ b/include/l2.h
+@@ -6,6 +6,17 @@
+ 
+  #ifndef __L2_H__
+  #define __L2_H__
++
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++#include <arpa/inet.h>
++
++#ifdef __cplusplus
++#define STP_WIRE_ASSERT(condition, message) static_assert(condition, message)
++#else
++#define STP_WIRE_ASSERT(condition, message) _Static_assert(condition, message)
++#endif
+  
+  /* definitions -------------------------------------------------------------- */
+  
+@@ -74,7 +85,7 @@
+ 	 BYTE destination_address_DSAP;
+ 	 BYTE source_address_SSAP;
+ 	 BYTE llc_frame_type;
+- } __attribute__((aligned(1))) LLC_HEADER;
++ } __attribute__((packed)) LLC_HEADER;
+  
+  typedef struct SNAP_HEADER
+  {
+@@ -85,25 +96,58 @@
+  
+ 	 BYTE protocol_id_filler[3];
+ 	 UINT16 protocol_id;
+- } __attribute__((aligned(2))) SNAP_HEADER;
++ } __attribute__((packed)) SNAP_HEADER;
+  
+  typedef struct MAC_ADDRESS
+  {
+ 	 UINT32 _ulong;
+ 	 UINT16 _ushort;
+- } __attribute__((aligned(4))) MAC_ADDRESS;
++ } __attribute__((packed)) MAC_ADDRESS;
+  
+  #define COPY_MAC(sptr_mac2, sptr_mac1) \
+ 	 (memcpy(sptr_mac2, sptr_mac1, sizeof(MAC_ADDRESS)))
+  
+- #define NET_TO_HOST_MAC(sptr_dst_mac, sptr_src_mac)                                           \
+-	 ((MAC_ADDRESS *)(sptr_dst_mac))->_ulong = ntohl(((MAC_ADDRESS *)(sptr_src_mac))->_ulong); \
+-	 ((MAC_ADDRESS *)(sptr_dst_mac))->_ushort = ntohs(((MAC_ADDRESS *)(sptr_src_mac))->_ushort);
+- 
+- /* copies src mac to dst mac and converts to network byte ordering */
+- #define HOST_TO_NET_MAC(sptr_dst_mac, sptr_src_mac)                                           \
+-	 ((MAC_ADDRESS *)(sptr_dst_mac))->_ulong = htonl(((MAC_ADDRESS *)(sptr_src_mac))->_ulong); \
+-	 ((MAC_ADDRESS *)(sptr_dst_mac))->_ushort = htons(((MAC_ADDRESS *)(sptr_src_mac))->_ushort);
++/* Wire fields can start at odd addresses. Never access them through a cast
++ * to an ordinarily aligned integer pointer. Read both MAC pieces before
++ * writing so that the in-place conversions used by BPDU encode/decode work. */
++static inline uint16_t stp_load_u16(const void *src)
++{
++    uint16_t value;
++    memcpy(&value, src, sizeof(value));
++    return value;
++}
++
++static inline void stp_store_u16(void *dst, uint16_t value)
++{
++    memcpy(dst, &value, sizeof(value));
++}
++
++static inline void stp_mac_net_to_host(void *dst, const void *src)
++{
++    uint32_t high;
++    uint16_t low;
++    memcpy(&high, src, sizeof(high));
++    memcpy(&low, (const unsigned char *)src + sizeof(high), sizeof(low));
++    high = ntohl(high);
++    low = ntohs(low);
++    memcpy(dst, &high, sizeof(high));
++    memcpy((unsigned char *)dst + sizeof(high), &low, sizeof(low));
++}
++
++static inline void stp_mac_host_to_net(void *dst, const void *src)
++{
++    uint32_t high;
++    uint16_t low;
++    memcpy(&high, src, sizeof(high));
++    memcpy(&low, (const unsigned char *)src + sizeof(high), sizeof(low));
++    high = htonl(high);
++    low = htons(low);
++    memcpy(dst, &high, sizeof(high));
++    memcpy((unsigned char *)dst + sizeof(high), &low, sizeof(low));
++}
++
++#define NET_TO_HOST_MAC(dst, src) stp_mac_net_to_host((dst), (src))
++#define HOST_TO_NET_MAC(dst, src) stp_mac_host_to_net((dst), (src))
+  
+  typedef struct MAC_HEADER
+  {
+@@ -111,7 +155,15 @@
+ 	 MAC_ADDRESS source_address;
+  
+ 	 USHORT length;
+- } __attribute__((aligned(4))) MAC_HEADER;
++ } __attribute__((packed)) MAC_HEADER;
++
++/* These structures are copied directly to/from Ethernet frames. */
++STP_WIRE_ASSERT(sizeof(MAC_ADDRESS) == 6, "MAC address must be six wire bytes");
++STP_WIRE_ASSERT(sizeof(MAC_HEADER) == 14, "Ethernet header must be 14 wire bytes");
++STP_WIRE_ASSERT(offsetof(MAC_HEADER, source_address) == 6, "Ethernet source offset");
++STP_WIRE_ASSERT(offsetof(MAC_HEADER, length) == 12, "Ethernet length offset");
++STP_WIRE_ASSERT(sizeof(LLC_HEADER) == 3, "LLC header must be three wire bytes");
++STP_WIRE_ASSERT(sizeof(SNAP_HEADER) == 8, "SNAP header must be eight wire bytes");
+  
+  #define STP_BPDU_OFFSET (sizeof(MAC_HEADER) + sizeof(LLC_HEADER))
+  #define PVST_BPDU_OFFSET (sizeof(MAC_HEADER) + sizeof(SNAP_HEADER))
+@@ -186,4 +238,3 @@
+ 	 memset(_instance_mask_ptr_, 0, sizeof(L2_PROTO_INSTANCE_MASK))
+  
+  #endif //__L2_H__
+- 
+\ No newline at end of file
+diff --git a/include/stp_common.h b/include/stp_common.h
+index 376e530..d69a70c 100755
+--- a/include/stp_common.h
++++ b/include/stp_common.h
+@@ -68,7 +68,7 @@ typedef struct BRIDGE_BPDU_FLAGS
+ 	UINT8 blank : 6;
+ 	UINT8 topology_change_acknowledgement : 1;
+ #endif
+-} __attribute__((aligned(1))) BRIDGE_BPDU_FLAGS;
++} __attribute__((packed)) BRIDGE_BPDU_FLAGS;
+ 
+ typedef struct BRIDGE_IDENTIFIER
+ {
+@@ -82,7 +82,7 @@ typedef struct BRIDGE_IDENTIFIER
+ 
+ 	MAC_ADDRESS address;
+ 
+-} __attribute__((aligned(4))) BRIDGE_IDENTIFIER;
++} __attribute__((packed)) BRIDGE_IDENTIFIER;
+ 
+ typedef struct PORT_IDENTIFIER
+ {
+@@ -93,7 +93,7 @@ typedef struct PORT_IDENTIFIER
+ 	UINT16 number : 12;
+ 	UINT16 priority : 4;
+ #endif // BIG_ENDIAN
+-} __attribute__((aligned(2))) PORT_IDENTIFIER;
++} __attribute__((packed)) PORT_IDENTIFIER;
+ 
+ // spanning-tree configuration bpdu
+ typedef struct STP_CONFIG_BPDU
+@@ -112,7 +112,7 @@ typedef struct STP_CONFIG_BPDU
+ 	UINT16 max_age;
+ 	UINT16 hello_time;
+ 	UINT16 forward_delay;
+-} __attribute__((aligned(4))) STP_CONFIG_BPDU;
++} __attribute__((packed)) STP_CONFIG_BPDU;
+ 
+ // spanning-tree topology change notification bpdu
+ typedef struct STP_TCN_BPDU
+@@ -123,7 +123,7 @@ typedef struct STP_TCN_BPDU
+ 	UINT8 protocol_version_id;
+ 	UINT8 type;
+ 	UINT8 padding[3];
+-} __attribute__((aligned(4))) STP_TCN_BPDU;
++} __attribute__((packed)) STP_TCN_BPDU;
+ 
+ // pvst configuration bpdu
+ typedef struct PVST_CONFIG_BPDU
+@@ -145,7 +145,7 @@ typedef struct PVST_CONFIG_BPDU
+ 	UINT8 padding[3];
+ 	UINT16 tag_length;
+ 	UINT16 vlan_id;
+-} __attribute__((aligned(4))) PVST_CONFIG_BPDU;
++} __attribute__((packed)) PVST_CONFIG_BPDU;
+ 
+ // pvst topology change notification bpdu
+ typedef struct PVST_TCN_BPDU
+@@ -156,6 +156,26 @@ typedef struct PVST_TCN_BPDU
+ 	UINT8 protocol_version_id;
+ 	UINT8 type;
+ 	UINT8 padding[38];
+-} __attribute__((aligned(4))) PVST_TCN_BPDU;
++} __attribute__((packed)) PVST_TCN_BPDU;
++
++/* The send/receive paths copy these structures as wire bytes, including the
++ * 35-byte configuration BPDU shared between IEEE STP and Cisco PVST. */
++STP_WIRE_ASSERT(sizeof(BRIDGE_BPDU_FLAGS) == 1, "BPDU flags size");
++STP_WIRE_ASSERT(sizeof(BRIDGE_IDENTIFIER) == 8, "Bridge identifier size");
++STP_WIRE_ASSERT(offsetof(BRIDGE_IDENTIFIER, address) == 2, "Bridge MAC offset");
++STP_WIRE_ASSERT(sizeof(PORT_IDENTIFIER) == 2, "Port identifier size");
++STP_WIRE_ASSERT(sizeof(STP_CONFIG_BPDU) == 52, "STP config frame size");
++STP_WIRE_ASSERT(offsetof(STP_CONFIG_BPDU, protocol_id) == 17, "STP BPDU offset");
++STP_WIRE_ASSERT(offsetof(STP_CONFIG_BPDU, root_id) == 22, "STP root offset");
++STP_WIRE_ASSERT(offsetof(STP_CONFIG_BPDU, port_id) == 42, "STP port offset");
++STP_WIRE_ASSERT(offsetof(STP_CONFIG_BPDU, forward_delay) == 50, "STP timer offset");
++STP_WIRE_ASSERT(sizeof(STP_TCN_BPDU) == 24, "STP TCN frame with padding size");
++STP_WIRE_ASSERT(sizeof(PVST_CONFIG_BPDU) == 64, "PVST config frame size");
++STP_WIRE_ASSERT(offsetof(PVST_CONFIG_BPDU, protocol_id) == 22, "PVST BPDU offset");
++STP_WIRE_ASSERT(offsetof(PVST_CONFIG_BPDU, root_id) == 27, "PVST root offset");
++STP_WIRE_ASSERT(offsetof(PVST_CONFIG_BPDU, port_id) == 47, "PVST port offset");
++STP_WIRE_ASSERT(offsetof(PVST_CONFIG_BPDU, tag_length) == 60, "PVST TLV length offset");
++STP_WIRE_ASSERT(offsetof(PVST_CONFIG_BPDU, vlan_id) == 62, "PVST VLAN offset");
++STP_WIRE_ASSERT(sizeof(PVST_TCN_BPDU) == 64, "PVST TCN frame size");
+ 
+ #endif //__STP_COMMON_H__
+diff --git a/stp/stp_pkt.c b/stp/stp_pkt.c
+index b22dd07..ae6666d 100644
+--- a/stp/stp_pkt.c
++++ b/stp/stp_pkt.c
+@@ -223,6 +223,15 @@ int stp_pkt_tx_handler(uint32_t port_id, VLAN_ID vlan_id, char *buffer, uint16_t
+         return -1;
+     }
+ 
++    /* Check before adding the tag or copying to the fixed-size stack buffer. */
++    if (!buffer || size < sizeof(MAC_HEADER) ||
++        size > STP_MAX_PKT_LEN - (tagged ? VLAN_HEADER_LEN : 0))
++    {
++        STP_LOG_ERR("Invalid BPDU transmit size %u", size);
++        STPD_INCR_PKT_COUNT(port_id, pkt_tx_err);
++        return -1;
++    }
++
+     if (tagged)
+         size += VLAN_HEADER_LEN;
+ 
+@@ -373,4 +382,3 @@ void stp_pkt_rx_handler (evutil_socket_t fd, short what, void *arg)
+ 
+     return;
+ }
+-
+diff --git a/stp/stp_util.c b/stp/stp_util.c
+index fc02544..b740b77 100755
+--- a/stp/stp_util.c
++++ b/stp/stp_util.c
+@@ -316,8 +316,8 @@ enum SORT_RETURN stputil_compare_bridge_id(BRIDGE_IDENTIFIER *id1, BRIDGE_IDENTI
+  */
+ enum SORT_RETURN stputil_compare_port_id(PORT_IDENTIFIER *port_id1, PORT_IDENTIFIER *port_id2)
+ {
+-	UINT16 port1 = *((UINT16 *) port_id1);
+-	UINT16 port2 = *((UINT16 *) port_id2);
++	UINT16 port1 = stp_load_u16(port_id1);
++	UINT16 port2 = stp_load_u16(port_id2);
+ 
+ 	if (port1 > port2)
+ 		return (GREATER_THAN);
+@@ -567,11 +567,11 @@ void stputil_encode_bpdu(STP_CONFIG_BPDU *bpdu)
+ 		bpdu->type == RSTP_BPDU_TYPE)
+ 	{
+ 		HOST_TO_NET_MAC(&bpdu->root_id.address, &bpdu->root_id.address);
+-		*((UINT16 *)&bpdu->root_id)     = htons(*((UINT16 *)&bpdu->root_id));
++		stp_store_u16(&bpdu->root_id, htons(stp_load_u16(&bpdu->root_id)));
+ 		bpdu->root_path_cost            = htonl(bpdu->root_path_cost);
+ 		HOST_TO_NET_MAC(&bpdu->bridge_id.address, &bpdu->bridge_id.address);
+-		*((UINT16 *)&bpdu->bridge_id)   = htons(*((UINT16 *)&bpdu->bridge_id));
+-		*((UINT16 *) &bpdu->port_id)    = htons(*((UINT16 *) &bpdu->port_id));
++		stp_store_u16(&bpdu->bridge_id, htons(stp_load_u16(&bpdu->bridge_id)));
++		stp_store_u16(&bpdu->port_id, htons(stp_load_u16(&bpdu->port_id)));
+ 
+ 		bpdu->message_age               = htons(bpdu->message_age);
+ 		bpdu->max_age                   = htons(bpdu->max_age);
+@@ -593,11 +593,11 @@ void stputil_decode_bpdu(STP_CONFIG_BPDU *bpdu)
+ 		bpdu->type == RSTP_BPDU_TYPE)
+ 	{
+ 		NET_TO_HOST_MAC(&bpdu->root_id.address, &bpdu->root_id.address);
+-		*((UINT16 *)&bpdu->root_id)     = ntohs(*((UINT16 *)&bpdu->root_id));
++		stp_store_u16(&bpdu->root_id, ntohs(stp_load_u16(&bpdu->root_id)));
+ 		bpdu->root_path_cost            = ntohl(bpdu->root_path_cost);
+ 		NET_TO_HOST_MAC(&bpdu->bridge_id.address, &bpdu->bridge_id.address);
+-		*((UINT16 *)&bpdu->bridge_id)   = ntohs(*((UINT16 *)&bpdu->bridge_id));
+-		*((UINT16 *) &bpdu->port_id)    = ntohs(*((UINT16 *) &bpdu->port_id));
++		stp_store_u16(&bpdu->bridge_id, ntohs(stp_load_u16(&bpdu->bridge_id)));
++		stp_store_u16(&bpdu->port_id, ntohs(stp_load_u16(&bpdu->port_id)));
+ 
+ 		bpdu->message_age               = ntohs(bpdu->message_age) >> 8;
+ 		bpdu->max_age                   = ntohs(bpdu->max_age) >> 8;
+@@ -1406,4 +1406,3 @@ void sys_assert(int status)
+ {
+     assert(status);
+ }
+-
