@@ -26,8 +26,9 @@ PVST configuration frame is 68 bytes, excluding the Ethernet FCS. The existing
   AddressSanitizer/UndefinedBehaviorSanitizer runs, and independent `tcpdump`
   decoding passed.
 - Public fixtures use synthetic MAC, VLAN, and port values, not captured data.
-- Switch startup, ASIC delivery, and end-to-end convergence remain deployment
-  checks. This is not a claim of completed production validation.
+- A controlled two-switch deployment validated container startup, ASIC delivery,
+  LACP/STP convergence, root election, BPDU counters and 68-byte PVST frames.
+  Every target environment still requires the deployment checks in this repository.
 
 ## Contents
 

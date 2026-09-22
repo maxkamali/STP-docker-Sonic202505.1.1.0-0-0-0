@@ -33,10 +33,17 @@ Public packaging:
   local artifacts can have a different suffix and different checksums; this
   repository does not claim they are byte-identical.
 
+Deployment validation:
+
+- Validate a controlled two-switch pair with both repaired containers.
+- Confirm correct 68-byte tagged PVST frames in both directions.
+- Confirm root election, forwarding state and asymmetric root/non-root counters.
+- Preserve the original stopped container for immediate rollback.
+- Allow up to five minutes for LACP and hardware reconciliation before declaring
+  a failed cutover; restart that observation window after a switch reboot.
+
 Remaining validation:
 
-- Start the daemon against the target switch's Redis/configuration.
-- Verify ASIC delivery and Linux VLAN/AUXDATA receive behavior.
-- Verify root election, BPDU counters and forwarding state across a switch pair.
+- Additional hardware/software combinations need their own acceptance checks.
 - MSTP is outside the tested scope; the pinned baseline's STP Makefile does not
   compile its implementation.
